@@ -1,4 +1,4 @@
-#include "Python.h"
+#include <Python.h>
 
 #include "vlc/include/subtitles.h"
 #include "ffmpeg/include/htmlsubtitles.h"
@@ -14,7 +14,11 @@ static const IPTV_UI_TYPE MAX_SUBTITLE_TEXT_SIZE = 1024;
 
 static PyObject * get_version(PyObject *self, PyObject *unused)
 {
+#if PY_MAJOR_VERSION >= 3
+    return PyUnicode_FromString(SUB_PARSER_VERSION);
+#else
     return PyString_FromString(SUB_PARSER_VERSION);
+#endif
 }
 
 static uint32_t words(const char sentence[ ])
@@ -198,7 +202,13 @@ static PyObject * _subparser_parse(PyObject *self, PyObject *args)
     
     /* add subtitles format to return dict */
     /* elem = PyInt_FromLong((long) p_sys->i_type); */
+#if PY_MAJOR_VERSION >= 3
+    elem = PyUnicode_FromString( p_sys->psz_type_name );
+#else
     elem = PyString_FromString( p_sys->psz_type_name );
+#endif
+
+
     PyDict_SetItemString(retObj, "type", elem); 
     Py_DECREF(elem); // PyDict_SetItemString not still reference but incement it
     
@@ -220,6 +230,18 @@ static PyObject* _subparser_strip_html_tags(PyObject *self, PyObject *args, PyOb
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O:strip_html_tags", kwlist, &string))
         return NULL;
     
+#if PY_MAJOR_VERSION >= 3
+
+    if (!PyUnicode_Check(string))
+        return NULL;
+
+    in = PyUnicode_AsUTF8AndSize(string, &isize);
+    if (in == NULL) {
+        return NULL; // not a string object or it contains null bytes
+    }
+
+#else
+
     if (!PyString_Check(string))
         return NULL;
 
@@ -227,13 +249,19 @@ static PyObject* _subparser_strip_html_tags(PyObject *self, PyObject *args, PyOb
         return NULL; // not a string object or it contains null bytes
     }
 
+#endif
+
     Py_BEGIN_ALLOW_THREADS
     out = strip_html_tags(in, isize, &osize);
     Py_END_ALLOW_THREADS
 
     if (out)
     {
+#if PY_MAJOR_VERSION >= 3
+        object = PyUnicode_FromStringAndSize(out, osize);
+#else
         object = PyString_FromStringAndSize(out, osize);
+#endif
         free(out);
     }
     else
@@ -265,7 +293,31 @@ static PyMethodDef _subparserMethods[] = {
     {NULL,NULL,0,NULL}
 };
 
+#if PY_MAJOR_VERSION >= 3
+
+static struct PyModuleDef moduledef = {
+	PyModuleDef_HEAD_INIT,
+	"_subparser",         /* m_name */
+	"_subparser",        /* m_doc */
+	-1,                  /* m_size */
+	_subparserMethods,   /* m_methods */
+	NULL,                /* m_reload */
+	NULL,                /* m_traverse */
+	NULL,                /* m_clear */
+	NULL,                /* m_free */
+};
+
+
+PyMODINIT_FUNC PyInit__subparser(void) {
+    Py_Initialize();
+    return PyModule_Create(&moduledef);
+}
+
+#else
+
 PyMODINIT_FUNC init_subparser(void)
 {
     Py_InitModule("_subparser", _subparserMethods);
 }
+
+#endif
